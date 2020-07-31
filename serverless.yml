@@ -1,0 +1,101 @@
+service:
+  name: ongs-api
+
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+  serverless-offline:
+    httpPort: 3003
+  dynamodb:
+    start:
+      port: 8000
+      inMemory: true
+      migrate: true
+    stages:
+      - dev
+
+plugins:
+  - serverless-webpack
+  #1
+  - serverless-iam-roles-per-function
+  - serverless-offline
+  - serverless-dynamodb-local
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  #2
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  apiGateway:
+    minimumCompressionSize: 1024
+  environment:
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    #3
+    ONGS_TABLE: Ongs-${self:provider.stage}
+
+functions:
+  #4
+  CreateOng:
+    handler: src/lambda/http/createOng.handler
+    events:
+      - http:
+          method: post
+          path: ongs
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ONGS_TABLE}
+  GetOngs:
+    handler: src/lambda/http/getOngs.handler
+    events:
+      - http:
+          method: get
+          path: ongs
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Scan
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ONGS_TABLE}
+  UpdateOng:
+    handler: src/lambda/http/updateOng.handler
+    events:
+      - http:
+          method: patch
+          path: ongs/{id}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ONGS_TABLE}
+  DeleteOng:
+    handler: src/lambda/http/deleteOng.handler
+    events:
+      - http:
+          method: delete
+          path: ongs/{id}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ONGS_TABLE}
+#5
+resources: # CloudFormation template syntax
+  Resources:
+    OngsDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.ONGS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        # AWS Free tier
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
